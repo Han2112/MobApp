@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:raihan_1101223012/dashboardpage.dart';
 import 'package:raihan_1101223012/registerpage.dart';
 import 'package:raihan_1101223012/resetpage.dart';
-import 'package:raihan_1101223012/dashboardpage.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
-
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  _LoginPageState createState() => _LoginPageState();
 }
 
 class _LoginPageState extends State<LoginPage> {
@@ -16,6 +17,79 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
+
+  final LocalAuthentication auth = LocalAuthentication();
+  final FlutterSecureStorage _secureStorage =
+      const FlutterSecureStorage(); // Tambahkan ini
+
+  // Fungsi untuk autentikasi menggunakan sidik jari
+  Future<void> _authenticateWithBiometrics() async {
+    try {
+      final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
+      final bool canAuthenticate =
+          canAuthenticateWithBiometrics || await auth.isDeviceSupported();
+
+      if (!canAuthenticate) {
+        _showSnackBar(
+          'Biometric authentication tidak tersedia di perangkat ini.',
+          Colors.orange,
+        );
+        return;
+      }
+
+      final bool didAuthenticate = await auth.authenticate(
+        localizedReason: 'Silakan pindai sidik jari Anda untuk masuk',
+        biometricOnly: true,
+      );
+
+      if (didAuthenticate) {
+        // Karena skenario mengharuskan user mendaftar via menu Profil,
+        // kita langsung ambil email dan password dari Secure Storage
+        final savedEmail = await _secureStorage.read(key: 'saved_email');
+        final savedPassword = await _secureStorage.read(key: 'saved_password');
+
+        if (savedEmail != null &&
+            savedEmail.isNotEmpty &&
+            savedPassword != null &&
+            savedPassword.isNotEmpty) {
+          setState(() {
+            _isLoading = true;
+          });
+
+          try {
+            // Lakukan proses login di balik layar
+            final response = await Supabase.instance.client.auth
+                .signInWithPassword(email: savedEmail, password: savedPassword);
+
+            if (response.user != null) {
+              _showSnackBar('Login sidik jari berhasil!', Colors.green);
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => DashboardPage()),
+              );
+            }
+          } catch (e) {
+            _showSnackBar(
+              'Gagal login: Kredensial tidak valid atau berubah.',
+              Colors.red,
+            );
+          } finally {
+            setState(() {
+              _isLoading = false;
+            });
+          }
+        } else {
+          // Jika di storage kosong
+          _showSnackBar(
+            'Sidik jari belum didaftarkan. Silakan login manual dan daftarkan di menu Profil.',
+            Colors.orange,
+          );
+        }
+      }
+    } on PlatformException catch (e) {
+      _showSnackBar('Error Biometric: ${e.message}', Colors.red);
+    }
+  }
 
   Future<void> _login() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
@@ -35,30 +109,21 @@ class _LoginPageState extends State<LoginPage> {
 
       if (response.user != null) {
         _showSnackBar('Login successful!', Colors.green);
-        if (mounted) {
-          // MENGIRIM PASSWORD KE DASHBOARD PAGE
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  DashboardPage(passwordDariLogin: _passwordController.text),
-            ),
-          );
-        }
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => DashboardPage()),
+        );
       }
     } catch (e) {
       _showSnackBar('Login failed: ${e.toString()}', Colors.red);
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
   void _showSnackBar(String message, Color color) {
-    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -105,40 +170,9 @@ class _LoginPageState extends State<LoginPage> {
                       style: TextStyle(color: Colors.grey),
                     ),
                     const SizedBox(height: 20),
-                    const SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircleAvatar(
-                            radius: 30,
-                            backgroundImage: AssetImage(
-                              'lib/images/profile.png',
-                            ),
-                          ),
-                          SizedBox(width: 10),
-                          CircleAvatar(
-                            radius: 50,
-                            backgroundImage: AssetImage(
-                              'lib/images/profile.png',
-                            ),
-                          ),
-                          SizedBox(width: 10),
-                          CircleAvatar(
-                            radius: 10,
-                            backgroundImage: AssetImage(
-                              'lib/images/profile.png',
-                            ),
-                          ),
-                          SizedBox(width: 10),
-                          CircleAvatar(
-                            radius: 20,
-                            backgroundImage: AssetImage(
-                              'lib/images/profile.png',
-                            ),
-                          ),
-                        ],
-                      ),
+                    const CircleAvatar(
+                      radius: 50,
+                      backgroundImage: AssetImage('lib/images/glb_red1.jpg'),
                     ),
                     const SizedBox(height: 20),
                     TextField(
@@ -177,21 +211,38 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: _isLoading ? null : _login,
+                            child: _isLoading
+                                ? const CircularProgressIndicator()
+                                : const Text('Login'),
                           ),
                         ),
-                        onPressed: _isLoading ? null : _login,
-                        child: _isLoading
-                            ? const CircularProgressIndicator()
-                            : const Text('Login'),
-                      ),
+                        const SizedBox(width: 10),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.fingerprint,
+                            size: 36,
+                            color: Colors.indigo,
+                          ),
+                          onPressed: _isLoading
+                              ? null
+                              : _authenticateWithBiometrics,
+                          tooltip: "Login dengan Sidik Jari",
+                        ),
+                      ],
                     ),
+
                     const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,

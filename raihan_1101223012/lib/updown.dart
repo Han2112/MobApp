@@ -1,7 +1,8 @@
-import 'dart:html' as html;
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:image_picker/image_picker.dart';
 
 class UpDownPage extends StatefulWidget {
   @override
@@ -18,9 +19,9 @@ class _UpDownPageState extends State<UpDownPage> {
   String _currentPath = '';
   List<String> _pathHistory = [];
 
-  // Fungsi untuk membersihkan nama file dari karakter tidak valid (lebih agresif)
+  final ImagePicker _picker = ImagePicker();
+
   String _sanitizeFileName(String fileName) {
-    // Pisahkan nama file dan ekstensi
     final lastDot = fileName.lastIndexOf('.');
     String nameWithoutExt = fileName;
     String extension = '';
@@ -30,29 +31,19 @@ class _UpDownPageState extends State<UpDownPage> {
       extension = fileName.substring(lastDot);
     }
 
-    // Hanya izinkan: huruf (a-z, A-Z), angka (0-9), underscore (_), dan titik (.)
-    // Hapus semua karakter lain
     String cleanName = nameWithoutExt
-        .replaceAll(
-          RegExp(r'[^a-zA-Z0-9]'),
-          '_',
-        ) // Ganti semua non-alphanumeric dengan underscore
-        .replaceAll(RegExp(r'_+'), '_') // Ganti multiple underscore dengan satu
-        .replaceAll(RegExp(r'^_|_$'), ''); // Hapus underscore di awal/akhir
+        .replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
 
-    // Batasi panjang maksimal nama file (misal 100 karakter)
     if (cleanName.length > 100) {
       cleanName = cleanName.substring(0, 100);
     }
 
-    // Gabungkan dengan ekstensi
     String result = cleanName + extension;
-
-    // Pastikan tidak kosong
     if (result.isEmpty || result == extension) {
       result = 'file_${DateTime.now().millisecondsSinceEpoch}$extension';
     }
-
     return result;
   }
 
@@ -125,156 +116,79 @@ class _UpDownPageState extends State<UpDownPage> {
     });
   }
 
-  Future<void> _uploadFile() async {
+  // Upload gambar dari galeri
+  Future<void> _uploadImage() async {
     try {
-      html.FileUploadInputElement uploadInput = html.FileUploadInputElement();
-      uploadInput.multiple = false;
-      uploadInput.accept = '*/*';
-      uploadInput.click();
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
 
-      uploadInput.onChange.listen((event) async {
-        final files = uploadInput.files;
-        if (files!.isEmpty) return;
+      if (image == null) return;
 
-        html.File selectedFile = files[0];
-        String originalFileName = selectedFile.name;
-        String cleanFileName = _sanitizeFileName(originalFileName);
+      Uint8List fileBytes = await image.readAsBytes();
+      String originalFileName = image.name;
+      String cleanFileName = _sanitizeFileName(originalFileName);
 
-        if (originalFileName != cleanFileName) {
-          final confirm = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text('Nama File Akan Diubah'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Nama asli: ',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Text(originalFileName, style: TextStyle(fontSize: 12)),
-                  SizedBox(height: 10),
-                  Text(
-                    'Nama baru: ',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    cleanFileName,
-                    style: TextStyle(fontSize: 12, color: Colors.green),
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    'Karakter tidak valid telah diganti dengan underscore (_)',
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: Text('Batal'),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: Text('Lanjutkan'),
-                ),
-              ],
-            ),
-          );
+      String filePath = _currentPath.isEmpty
+          ? cleanFileName
+          : '$_currentPath/$cleanFileName';
 
-          if (confirm != true) return;
-        }
-
-        String filePath = _currentPath.isEmpty
-            ? cleanFileName
-            : '$_currentPath/$cleanFileName';
-
-        setState(() {
-          _isLoading = true;
-        });
-
-        try {
-          final reader = html.FileReader();
-          reader.readAsArrayBuffer(selectedFile);
-
-          await reader.onLoadEnd.first;
-          final bytes = reader.result as dynamic;
-
-          await Supabase.instance.client.storage
-              .from(_bucketName)
-              .uploadBinary(filePath, bytes);
-
-          _showSnackBar('File uploaded successfully!', Colors.green);
-          await _loadFiles();
-        } catch (e) {
-          _showSnackBar('Upload failed: ${e.toString()}', Colors.red);
-        } finally {
-          setState(() {
-            _isLoading = false;
-          });
-        }
+      setState(() {
+        _isLoading = true;
       });
+
+      try {
+        await Supabase.instance.client.storage
+            .from(_bucketName)
+            .uploadBinary(filePath, fileBytes);
+
+        _showSnackBar('Image uploaded successfully!', Colors.green);
+        await _loadFiles();
+      } catch (e) {
+        _showSnackBar('Upload failed: ${e.toString()}', Colors.red);
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       _showSnackBar('Error: $e', Colors.red);
     }
   }
 
-  Future<void> _uploadMultipleFiles() async {
+  // Upload gambar dari kamera
+  Future<void> _takePhoto() async {
     try {
-      html.FileUploadInputElement uploadInput = html.FileUploadInputElement();
-      uploadInput.multiple = true;
-      uploadInput.accept = '*/*';
-      uploadInput.click();
+      final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
 
-      uploadInput.onChange.listen((event) async {
-        final files = uploadInput.files;
-        if (files!.isEmpty) return;
+      if (photo == null) return;
 
-        setState(() {
-          _isLoading = true;
-        });
+      Uint8List fileBytes = await photo.readAsBytes();
+      String originalFileName = photo.name;
+      String cleanFileName = _sanitizeFileName(originalFileName);
 
-        int successCount = 0;
+      String filePath = _currentPath.isEmpty
+          ? cleanFileName
+          : '$_currentPath/$cleanFileName';
 
-        for (var i = 0; i < files.length; i++) {
-          try {
-            html.File selectedFile = files[i];
-            String originalFileName = selectedFile.name;
-            String cleanFileName = _sanitizeFileName(originalFileName);
-            String filePath = _currentPath.isEmpty
-                ? cleanFileName
-                : '$_currentPath/$cleanFileName';
+      setState(() {
+        _isLoading = true;
+      });
 
-            final reader = html.FileReader();
-            reader.readAsArrayBuffer(selectedFile);
-            await reader.onLoadEnd.first;
-            final bytes = reader.result as dynamic;
+      try {
+        await Supabase.instance.client.storage
+            .from(_bucketName)
+            .uploadBinary(filePath, fileBytes);
 
-            await Supabase.instance.client.storage
-                .from(_bucketName)
-                .uploadBinary(filePath, bytes);
-
-            successCount++;
-          } catch (e) {
-            print('Error uploading file: $e');
-          }
-        }
-
-        _showSnackBar(
-          '$successCount/${files.length} files uploaded successfully!',
-          Colors.green,
-        );
+        _showSnackBar('Photo uploaded successfully!', Colors.green);
         await _loadFiles();
-
+      } catch (e) {
+        _showSnackBar('Upload failed: ${e.toString()}', Colors.red);
+      } finally {
         setState(() {
           _isLoading = false;
         });
-      });
+      }
     } catch (e) {
       _showSnackBar('Error: $e', Colors.red);
-      setState(() {
-        _isLoading = false;
-      });
     }
   }
 
@@ -306,15 +220,7 @@ class _UpDownPageState extends State<UpDownPage> {
                 labelText:
                     'New name${fileItem['is_folder'] ? '' : ' (without extension)'}',
                 border: OutlineInputBorder(),
-                helperText: fileItem['is_folder']
-                    ? 'Spaces and special characters will be replaced with underscore'
-                    : 'Extension .${extension.replaceFirst('.', '')} will be preserved',
               ),
-            ),
-            SizedBox(height: 10),
-            Text(
-              'Note: Spaces and special characters will be replaced with underscore',
-              style: TextStyle(fontSize: 12, color: Colors.orange),
             ),
           ],
         ),
@@ -416,11 +322,9 @@ class _UpDownPageState extends State<UpDownPage> {
           fileItem['name'].toLowerCase().endsWith('.jpeg') ||
           fileItem['name'].toLowerCase().endsWith('.png') ||
           fileItem['name'].toLowerCase().endsWith('.gif') ||
-          fileItem['name'].toLowerCase().endsWith('.webp') ||
-          fileItem['name'].toLowerCase().endsWith('.bmp');
+          fileItem['name'].toLowerCase().endsWith('.webp');
 
       if (isImage) {
-        // Tampilkan loading terlebih dahulu
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -430,26 +334,19 @@ class _UpDownPageState extends State<UpDownPage> {
         );
 
         try {
-          // Dapatkan URL
           String imageUrl;
           try {
-            // Coba dengan signed URL
             imageUrl = await Supabase.instance.client.storage
                 .from(_bucketName)
-                .createSignedUrl(fileItem['full_path'], 3600); // 1 jam expired
+                .createSignedUrl(fileItem['full_path'], 3600);
           } catch (e) {
-            // Fallback ke public URL
             imageUrl = Supabase.instance.client.storage
                 .from(_bucketName)
                 .getPublicUrl(fileItem['full_path']);
           }
 
-          debugPrint('Image URL: $imageUrl'); // Cek URL di console
-
-          // Tutup loading
           Navigator.pop(context);
 
-          // Tampilkan dialog dengan gambar
           showDialog(
             context: context,
             builder: (BuildContext context) => Dialog(
@@ -475,20 +372,8 @@ class _UpDownPageState extends State<UpDownPage> {
                       fit: BoxFit.contain,
                       errorBuilder: (context, error, stackTrace) {
                         return const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.error, size: 50, color: Colors.red),
-                              SizedBox(height: 10),
-                              Text('Gambar tidak dapat ditampilkan'),
-                              Text('Pastikan bucket sudah public'),
-                            ],
-                          ),
+                          child: Text('Gambar tidak dapat ditampilkan'),
                         );
-                      },
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return const Center(child: CircularProgressIndicator());
                       },
                     ),
                   ),
@@ -497,11 +382,10 @@ class _UpDownPageState extends State<UpDownPage> {
             ),
           );
         } catch (e) {
-          Navigator.pop(context); // Tutup loading
+          Navigator.pop(context);
           _showSnackBar('Error: ${e.toString()}', Colors.red);
         }
       } else {
-        // Untuk non-gambar, buka di tab baru
         String url;
         try {
           url = await Supabase.instance.client.storage
@@ -512,7 +396,8 @@ class _UpDownPageState extends State<UpDownPage> {
               .from(_bucketName)
               .getPublicUrl(fileItem['full_path']);
         }
-        html.window.open(url, '_blank');
+
+        _showSnackBar('File URL: $url', Colors.blue);
       }
     } catch (e) {
       _showSnackBar('Cannot view file: ${e.toString()}', Colors.red);
@@ -521,12 +406,11 @@ class _UpDownPageState extends State<UpDownPage> {
 
   Future<void> _downloadFile(Map<String, dynamic> fileItem) async {
     try {
-      final String publicUrl = Supabase.instance.client.storage
+      final String url = Supabase.instance.client.storage
           .from(_bucketName)
           .getPublicUrl(fileItem['full_path']);
 
-      html.window.open(publicUrl, '_blank');
-      _showSnackBar('Download started in new tab', Colors.green);
+      _showSnackBar('Download URL: $url', Colors.blue);
     } catch (e) {
       _showSnackBar('Download failed: $e', Colors.red);
     }
@@ -569,6 +453,38 @@ class _UpDownPageState extends State<UpDownPage> {
     return '${(bytes / pow(k, i)).toStringAsFixed(1)} ${sizes[i]}';
   }
 
+  void _showUploadOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.photo_library, color: Colors.indigo),
+              title: Text('Pilih dari Galeri'),
+              onTap: () {
+                Navigator.pop(context);
+                _uploadImage();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.camera_alt, color: Colors.indigo),
+              title: Text('Ambil Foto'),
+              onTap: () {
+                Navigator.pop(context);
+                _takePhoto();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -577,14 +493,9 @@ class _UpDownPageState extends State<UpDownPage> {
         backgroundColor: Colors.indigo,
         actions: [
           IconButton(
-            icon: Icon(Icons.upload_file),
-            onPressed: _uploadFile,
-            tooltip: 'Upload File',
-          ),
-          IconButton(
             icon: Icon(Icons.upload),
-            onPressed: _uploadMultipleFiles,
-            tooltip: 'Upload Multiple',
+            onPressed: _showUploadOptions,
+            tooltip: 'Upload',
           ),
         ],
       ),
@@ -642,15 +553,9 @@ class _UpDownPageState extends State<UpDownPage> {
                       children: [
                         Icon(Icons.folder_open, size: 80, color: Colors.grey),
                         SizedBox(height: 16),
-                        Text(
-                          'No files found',
-                          style: TextStyle(fontSize: 16, color: Colors.grey),
-                        ),
+                        Text('No files found'),
                         SizedBox(height: 8),
-                        Text(
-                          'Tap + button to upload files',
-                          style: TextStyle(fontSize: 14, color: Colors.grey),
-                        ),
+                        Text('Tap + button to upload files'),
                       ],
                     ),
                   )
@@ -722,10 +627,10 @@ class _UpDownPageState extends State<UpDownPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _uploadFile,
+        onPressed: _showUploadOptions,
         backgroundColor: Colors.indigo,
         child: Icon(Icons.add),
-        tooltip: 'Upload File',
+        tooltip: 'Upload',
       ),
     );
   }

@@ -1,18 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:raihan_1101223012/crud.dart';
 import 'package:raihan_1101223012/imagegallery.dart';
 import 'package:raihan_1101223012/kalkulator.dart';
 import 'package:raihan_1101223012/loginpage.dart';
+//import 'package:raihan_1101223012/maps_page.dart';
 import 'package:raihan_1101223012/updown.dart';
-// IMPORT HALAMAN BARU:
-import 'package:raihan_1101223012/crud_uts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DashboardPage extends StatefulWidget {
-  final String passwordDariLogin;
-
-  const DashboardPage({super.key, this.passwordDariLogin = "0"});
-
   @override
   _DashboardPageState createState() => _DashboardPageState();
 }
@@ -22,7 +18,14 @@ class _DashboardPageState extends State<DashboardPage> {
   User? _currentUser;
   Map<String, dynamic>? _userProfile;
 
-  late List<Widget> pages;
+  final List<Widget> pages = [
+    _buildHomeContent(),
+    MyWidget(),
+    ImageGallery(),
+    UpDownPage(),
+    CrudPage(),
+    ProfilePage(),
+  ];
 
   static Widget _buildHomeContent() {
     return Center(
@@ -51,16 +54,6 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
-    pages = [
-      _buildHomeContent(), // Index 0
-      MyWidget(initialDisplay: widget.passwordDariLogin), // Index 1
-      ImageGallery(), // Index 2
-      UpDownPage(), // Index 3
-      CrudPage(), // Index 4
-      const CrudUtsPage(), // Index 5: HALAMAN BARU CRUD_UTS
-      ProfilePage(), // Index 6
-    ];
-
     _getCurrentUser();
     _loadUserProfile();
   }
@@ -127,14 +120,31 @@ class _DashboardPageState extends State<DashboardPage> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
+        builder: (context) => Center(
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 10),
+                  Text("Logging out..."),
+                ],
+              ),
+            ),
+          ),
+        ),
       );
 
       try {
-        await Supabase.instance.client.auth.signOut();
+        await Supabase.instance.client.auth.signOut(scope: SignOutScope.local);
 
         if (mounted) {
-          Navigator.pop(context);
+          // Gunakan rootNavigator untuk memastikan dialog loading tertutup dengan aman
+          Navigator.of(context, rootNavigator: true).pop();
+
+          // Hapus semua stack dan kembali ke login
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(builder: (context) => LoginPage()),
@@ -143,7 +153,7 @@ class _DashboardPageState extends State<DashboardPage> {
         }
       } catch (e) {
         if (mounted) {
-          Navigator.pop(context);
+          Navigator.of(context, rootNavigator: true).pop();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Logout failed: ${e.toString()}'),
@@ -172,130 +182,88 @@ class _DashboardPageState extends State<DashboardPage> {
         ],
       ),
       drawer: Drawer(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                color: Colors.indigo,
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Colors.white,
-                      child: Icon(Icons.person, size: 50, color: Colors.indigo),
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              color: Colors.indigo,
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 40,
+                    backgroundColor: Colors.white,
+                    child: Icon(Icons.person, size: 50, color: Colors.indigo),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    _userProfile?['full_name'] ??
+                        _currentUser?.email?.split('@').first ??
+                        'User Name',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      _userProfile?['full_name'] ??
-                          _currentUser?.email?.split('@').first ??
-                          'User Name',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      _currentUser?.email ?? 'user@email.com',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                  Text(
+                    _currentUser?.email ?? 'user@email.com',
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                ],
               ),
-              ListTile(
-                leading: const Icon(Icons.home),
-                title: const Text('Home'),
-                tileColor: currentIndex == 0 ? Colors.indigo[50] : null,
-                onTap: () {
-                  setState(() {
-                    currentIndex = 0;
-                  });
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.calculate),
-                title: const Text('Kalkulator'),
-                tileColor: currentIndex == 1 ? Colors.indigo[50] : null,
-                onTap: () {
-                  setState(() {
-                    currentIndex = 1;
-                  });
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.image),
-                title: const Text('Gallery'),
-                tileColor: currentIndex == 2 ? Colors.indigo[50] : null,
-                onTap: () {
-                  setState(() {
-                    currentIndex = 2;
-                  });
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.storage),
-                title: const Text('Storage (UpDown)'),
-                tileColor: currentIndex == 3 ? Colors.indigo[50] : null,
-                onTap: () {
-                  setState(() {
-                    currentIndex = 3;
-                  });
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.data_array),
-                title: const Text('CRUD'),
-                tileColor: currentIndex == 4 ? Colors.indigo[50] : null,
-                onTap: () {
-                  setState(() {
-                    currentIndex = 4;
-                  });
-                  Navigator.pop(context);
-                },
-              ),
-              // LIST TILE BARU UNTUK CRUD_UTS
-              ListTile(
-                leading: const Icon(Icons.quiz),
-                title: const Text('CRUD UTS'),
-                tileColor: currentIndex == 5 ? Colors.indigo[50] : null,
-                onTap: () {
-                  setState(() {
-                    currentIndex = 5;
-                  });
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.person),
-                title: const Text('Profile'),
-                tileColor: currentIndex == 6 ? Colors.indigo[50] : null,
-                onTap: () {
-                  setState(() {
-                    currentIndex = 6;
-                  });
-                  Navigator.pop(context);
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.logout, color: Colors.red),
-                title: const Text(
-                  'Logout',
-                  style: TextStyle(color: Colors.red),
-                ),
-                onTap: _logout,
-              ),
-            ],
-          ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.home),
+              title: const Text('Home'),
+              tileColor: currentIndex == 0 ? Colors.indigo[50] : null,
+              onTap: () {
+                setState(() {
+                  currentIndex = 0;
+                });
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.calculate),
+              title: const Text('Kalkulator'),
+              tileColor: currentIndex == 1 ? Colors.indigo[50] : null,
+              onTap: () {
+                setState(() {
+                  currentIndex = 1;
+                });
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.image),
+              title: const Text('Gallery'),
+              tileColor: currentIndex == 2 ? Colors.indigo[50] : null,
+              onTap: () {
+                setState(() {
+                  currentIndex = 2;
+                });
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person),
+              title: const Text('Profile'),
+              tileColor: currentIndex == 3 ? Colors.indigo[50] : null,
+              onTap: () {
+                setState(() {
+                  currentIndex = 3;
+                });
+                Navigator.pop(context);
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text('Logout', style: TextStyle(color: Colors.red)),
+              onTap: _logout,
+            ),
+          ],
         ),
       ),
       body: pages[currentIndex],
@@ -308,21 +276,19 @@ class _DashboardPageState extends State<DashboardPage> {
         },
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
-          BottomNavigationBarItem(icon: Icon(Icons.calculate), label: "Kal.."),
-          BottomNavigationBarItem(icon: Icon(Icons.image), label: "Gal.."),
-          BottomNavigationBarItem(icon: Icon(Icons.storage), label: "Sto.."),
-          BottomNavigationBarItem(icon: Icon(Icons.data_array), label: "CRUD"),
           BottomNavigationBarItem(
-            icon: Icon(Icons.quiz),
-            label: "UTS",
-          ), // TAB BARU DI NAVIGASI
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Prof.."),
+            icon: Icon(Icons.calculate),
+            label: "Kalkulator",
+          ),
+          BottomNavigationBarItem(icon: Icon(Icons.image), label: "Gallery"),
+          BottomNavigationBarItem(icon: Icon(Icons.storage), label: "Storage"),
+          BottomNavigationBarItem(icon: Icon(Icons.data_array), label: "CRUD"),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+          BottomNavigationBarItem(icon: Icon(Icons.map), label: "Maps"),
         ],
         selectedItemColor: Colors.indigo,
         unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed, // fixed agar icon tidak berpindah
-        selectedFontSize: 10, // Diperkecil agar label tidak bertabrakan
-        unselectedFontSize: 10,
+        type: BottomNavigationBarType.fixed,
       ),
     );
   }
@@ -337,8 +303,6 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   User? _currentUser;
   Map<String, dynamic>? _userProfile;
-  // ignore: unused_field
-  bool _isLoading = false;
 
   @override
   void initState() {
@@ -347,10 +311,6 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _loadUserData() async {
-    setState(() {
-      _isLoading = true;
-    });
-
     try {
       _currentUser = Supabase.instance.client.auth.currentUser;
 
@@ -369,11 +329,88 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     } catch (e) {
       print('Error loading user data: $e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
     }
+  }
+
+  // FUNGSI BARU: Mendaftarkan sidik jari
+  void _registerFingerprint() {
+    final TextEditingController _dialogPasswordController =
+        TextEditingController();
+    bool _obscureText = true;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+            title: Text('Daftarkan Sidik Jari'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Masukkan password Anda saat ini untuk mengaktifkan fitur login dengan sidik jari di perangkat ini.',
+                ),
+                SizedBox(height: 15),
+                TextField(
+                  controller: _dialogPasswordController,
+                  obscureText: _obscureText,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    border: OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureText ? Icons.visibility_off : Icons.visibility,
+                      ),
+                      onPressed: () {
+                        setStateDialog(() {
+                          _obscureText = !_obscureText;
+                        });
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Batal'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () async {
+                  if (_dialogPasswordController.text.isNotEmpty) {
+                    final secureStorage = const FlutterSecureStorage();
+                    // Simpan email dan password ke secure storage
+                    await secureStorage.write(
+                      key: 'saved_email',
+                      value: _currentUser?.email ?? '',
+                    );
+                    await secureStorage.write(
+                      key: 'saved_password',
+                      value: _dialogPasswordController.text,
+                    );
+
+                    Navigator.pop(context); // Tutup dialog
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Sidik Jari berhasil didaftarkan!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                },
+                child: Text('Simpan'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -438,6 +475,15 @@ class _ProfilePageState extends State<ProfilePage> {
             elevation: 5,
             child: Column(
               children: [
+                // MENU BARU: Sidik Jari
+                ListTile(
+                  leading: Icon(Icons.fingerprint, color: Colors.indigo),
+                  title: Text('Daftarkan Sidik Jari'),
+                  subtitle: Text('Aktifkan login cepat dengan sidik jari'),
+                  trailing: Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: _registerFingerprint,
+                ),
+                Divider(height: 1),
                 ListTile(
                   leading: Icon(Icons.lock_reset, color: Colors.indigo),
                   title: Text('Ubah Password'),
@@ -567,6 +613,8 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
+// Class ChangePasswordPage dan VerifyOtpPage tetap sama persis seperti sebelumnya...
+// (Anda dapat memasukkan kode asli dari ChangePasswordPage dan VerifyOtpPage milik Anda di sini tanpa perubahan)
 // ================= PAGE UBAH PASSWORD =================
 class ChangePasswordPage extends StatefulWidget {
   @override
@@ -583,6 +631,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   bool _obscureConfirmPassword = true;
 
   Future<void> _sendResetEmail() async {
+    // Validasi password
     if (_passwordController.text.isEmpty) {
       _showSnackBar('Please enter a new password', Colors.red);
       return;
@@ -609,6 +658,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         return;
       }
 
+      // Kirim email reset password dengan OTP
       await Supabase.instance.client.auth.resetPasswordForEmail(
         currentUser.email!,
       );
@@ -618,6 +668,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         Colors.green,
       );
 
+      // Navigasi ke halaman verifikasi OTP
       Future.delayed(Duration(seconds: 1), () {
         Navigator.push(
           context,
@@ -700,6 +751,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                     ),
                     SizedBox(height: 30),
 
+                    // Field Password Baru
                     TextField(
                       controller: _passwordController,
                       obscureText: _obscurePassword,
@@ -734,6 +786,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                     ),
                     SizedBox(height: 20),
 
+                    // Field Konfirmasi Password
                     TextField(
                       controller: _confirmPasswordController,
                       obscureText: _obscureConfirmPassword,
@@ -772,6 +825,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                     ),
                     SizedBox(height: 30),
 
+                    // Tombol Kirim OTP
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -851,6 +905,7 @@ class _VerifyOtpPageState extends State<VerifyOtpPage> {
     });
 
     try {
+      // Langkah 1: Verifikasi OTP dengan verifyOtp
       final verifyResponse = await Supabase.instance.client.auth.verifyOTP(
         type: OtpType.recovery,
         email: widget.email,
@@ -858,10 +913,12 @@ class _VerifyOtpPageState extends State<VerifyOtpPage> {
       );
 
       if (verifyResponse.user != null) {
+        // Langkah 2: OTP valid, update password
         await Supabase.instance.client.auth.updateUser(
           UserAttributes(password: widget.newPassword),
         );
 
+        // Langkah 3: Logout setelah update password
         await Supabase.instance.client.auth.signOut();
 
         _showSnackBar(
@@ -869,6 +926,7 @@ class _VerifyOtpPageState extends State<VerifyOtpPage> {
           Colors.green,
         );
 
+        // Kembali ke halaman login setelah 2 detik
         Future.delayed(Duration(seconds: 2), () {
           Navigator.popUntil(context, (route) => route.isFirst);
         });
@@ -979,6 +1037,7 @@ class _VerifyOtpPageState extends State<VerifyOtpPage> {
                     ),
                     SizedBox(height: 20),
 
+                    // Field OTP
                     TextField(
                       controller: _otpController,
                       keyboardType: TextInputType.number,
@@ -1004,6 +1063,7 @@ class _VerifyOtpPageState extends State<VerifyOtpPage> {
                     ),
                     SizedBox(height: 20),
 
+                    // Tombol Verifikasi
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -1041,6 +1101,7 @@ class _VerifyOtpPageState extends State<VerifyOtpPage> {
                     ),
                     SizedBox(height: 15),
 
+                    // Tombol Kirim Ulang
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [

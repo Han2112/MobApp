@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:raihan_1101223012/dashboardpage.dart';
 import 'package:raihan_1101223012/loginpage.dart';
+import 'package:raihan_1101223012/splashscreen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+// import 'splash_screen.dart'; // Import splash screen
+
 // import 'package:intl/intl.dart';
 
 void main() async {
@@ -23,8 +26,15 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  bool _showSplash = true;
 
   @override
   Widget build(BuildContext context) {
@@ -36,16 +46,25 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.grey[100],
         useMaterial3: true,
       ),
-      home: StreamBuilder<AuthState>(
-        stream: Supabase.instance.client.auth.onAuthStateChange,
-        builder: (context, snapshot) {
-          final user = snapshot.data?.session?.user;
-          if (user != null) {
-            return DashboardPage();
-          }
-          return LoginPage();
-        },
-      ),
+      // Tampilkan splash screen dulu, lalu setelah selesai tampilkan halaman auth
+      home: _showSplash
+          ? SplashScreen(
+              onFinish: () {
+                setState(() {
+                  _showSplash = false;
+                });
+              },
+            )
+          : StreamBuilder<AuthState>(
+              stream: Supabase.instance.client.auth.onAuthStateChange,
+              builder: (context, snapshot) {
+                final user = snapshot.data?.session?.user;
+                if (user != null) {
+                  return DashboardPage();
+                }
+                return LoginPage();
+              },
+            ),
     );
   }
 }
